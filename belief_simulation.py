@@ -29,9 +29,6 @@ class Patch:
     def get_belief(self):
         return self.status
 
-    def set_neutral(self):
-        self.status = Patch.NEUTRAL
-
     def set_expert(self):
         self.label = 'E'
 
@@ -39,10 +36,10 @@ class Patch:
         return self.label == 'E'
 
     def __str__(self):
-        return(str(self.label))
+        return(str(self.id))
 
     def __repr__(self):
-        return(str(self.label))
+        return(str(self.id))
 
     def __hash__(self):
         return hash(self.id)
@@ -58,9 +55,6 @@ class Belief(object):
     DISBELIEVE = 'r'
     UNDECIDED = 'y'
 
-    BELIEVE_THRESHOLD = 0.8
-    DISBELIEVE_THRESHOLD = 0.5
-
     def __init__(self):
         self.believe_patches = set()
         self.disbelieve_patches = set()
@@ -74,15 +68,14 @@ class Belief(object):
             Belief.UNDECIDED: self.undecided_patches
         }
 
-    def add_patch(self, patch, state):
+    def set_belief(self, patch, state):
         if self.check_state(state):
             patch.set_belief(state)
-            self.belief_states_patches[state].add(patch)
-
-    def remove_patch(self, patch, state):
-        if self.check_state(state):
-            patch.set_neutral()
-            self.belief_states_patches[state].remove(patch)
+            for belief_state in self.belief_states:
+                if belief_state == state:
+                    self.belief_states_patches[state].add(patch)
+                elif patch in self.belief_states_patches[belief_state]:
+                    self.belief_states_patches[belief_state].remove(patch)
 
     def get_belief(self, patch):
         for state in self.belief_states:
@@ -94,31 +87,39 @@ class Belief(object):
             return False
         return True
 
-    def set_random_belief(self, patch):
-        belief_random = np.random.uniform()
-        if belief_random > Belief.BELIEVE_THRESHOLD:
-            self.add_patch(patch, Belief.BELIEVE)
-        elif belief_random > Belief.DISBELIEVE_THRESHOLD:
-            self.add_patch(patch, Belief.DISBELIEVE)
-        else:
-            self.add_patch(patch, Belief.UNDECIDED)
-
 
 class Simulation(object):
-    nr_patches = 100   # Number of patches
-    c_distance = 15  # An arbitrary parameter to determine which patches are connected
+    NR_PATCHES = 100   # Number of patches
+    C_DISTANCE = 15  # An arbitrary parameter to determine which patches are connected
     NR_OF_EXPERTS = 1
     EXPERT_BELIEF = Belief.BELIEVE
-    BELIEF_UPDATE_THRESHOLD = 0.5
+    # this should be greater than 0.5 so that only one belief state can be above it at a time
+    BELIEF_UPDATE_THRESHOLD = 0.6
+
+    # these are used for generating the initial states of the patches
+    INIT_BELIEVE_THRESHOLD = 0.6
+    INIT_DISBELIEVE_THRESHOLD = 0.3
 
     # TODO: implement algorithm for generating small-world networks
 
-    def __init__(self, with_history=True):
+    def __init__(self, nr_patches=NR_PATCHES,
+                 nr_of_experts=NR_OF_EXPERTS,
+                 expert_belief=Belief.BELIEVE,
+                 belief_update_threshold=BELIEF_UPDATE_THRESHOLD,
+                 init_believe_threshold=INIT_BELIEVE_THRESHOLD,
+                 init_disbelieve_threshold=INIT_DISBELIEVE_THRESHOLD,
+                 c_distance=C_DISTANCE):
+        self.nr_patches = nr_patches
+        self.nr_of_experts = nr_of_experts
+        self.expert_belief = expert_belief
+        self.belief_update_threshold = belief_update_threshold
+        self.init_believe_threshold = init_believe_threshold
+        self.init_disbelieve_threshold = init_disbelieve_threshold
+        self.c_distance = c_distance
         self.step = 0
         self.patches = []
         self.history = []
-        self.experts = []
-        self.with_history = with_history
+        self.experts = set()
 
         self.graph = nx.Graph()
         self.generate_patches_2d()
@@ -127,13 +128,20 @@ class Simulation(object):
         self.set_initial_beliefs()
         self.add_experts()
 
-        # keep track of changes in history
-        if self.with_history:
-            self.save_history()
+        self.save_history()
 
     def set_initial_beliefs(self):
         for patch in self.patches:
-            self.belief.set_random_belief(patch)
+            self.set_random_belief(patch)
+
+    def set_random_belief(self, patch):
+        belief_random = np.random.uniform()
+        if belief_random > self.init_believe_threshold:
+            self.belief.set_belief(patch, Belief.BELIEVE)
+        elif belief_random > self.init_disbelieve_threshold:
+            self.belief.set_belief(patch, Belief.DISBELIEVE)
+        else:
+            self.belief.set_belief(patch, Belief.UNDECIDED)
 
     def generate_patches_2d(self):
         # maybe use some Barabasi-Albert graph instead of random generation?
@@ -158,14 +166,17 @@ class Simulation(object):
         return Patch(id=id, pos=pos)
 
     def add_experts(self):
-        for i in range(Simulation.NR_OF_EXPERTS):
+        for i in range(self.nr_of_experts):
             while True:
                 patch = np.random.choice(self.patches)
-                if not patch.is_expert():
+                if not self.is_expert(patch):
                     patch.set_expert()
-                    self.belief.add_patch(patch, Simulation.EXPERT_BELIEF)
-                    self.experts.append(patch)
+                    self.belief.set_belief(patch, self.expert_belief)
+                    self.experts.add(patch)
                     break
+
+    def is_expert(self, patch):
+        return patch in self.experts
 
     def save_history(self):
         self.history.append({
@@ -194,23 +205,49 @@ class Simulation(object):
         for step in range(steps):
             for patch in self.patches:
                 self.update_belief(patch)
+            self.save_history()
 
     def update_belief(self, patch):
-        friends_influence = self.get_friends_influence(patch)
-        # if agent believes or disbelieves something, friends influence that is above the 
+        # if agent believes or disbelieves something, friends influence that is above the
         # BELIEF_UPDATE_THRESHOLD will make him become undecided
         # if he is undecided, friends influence above the BELIEF_UPDATE_THRESHOLD will make him
         # update his belief to either BELIEVE or DISBELIEVE
-        pass
+        belief_state = self.belief.get_belief(patch)
+        relevant_influence = self.get_influence_above_threshold(patch)
+        if belief_state == Belief.UNDECIDED and relevant_influence:
+            self.belief.set_belief(patch, relevant_influence)
+        elif relevant_influence and belief_state != relevant_influence:
+            self.belief.set_belief(patch, Belief.UNDECIDED)
+
+    def get_influence_above_threshold(self, patch):
+        expert_influence = self.get_expert_influence(patch)
+        if expert_influence:
+            return expert_influence
+        friends_influence = self.get_friends_influence(patch)
+        for state in [Belief.BELIEVE, Belief.DISBELIEVE]:
+            if friends_influence[state] >= self.belief_update_threshold:
+                return state
+        return None
+
+    def get_expert_influence(self, patch):
+        # for now all experts hold the same belief state, but maybe we want to change that in the future
+        # so that experts do not all have the same belief state
+        for friend in self.graph[patch]:
+            if self.is_expert(friend):
+                return self.belief.get_belief(friend)
 
     def get_friends_influence(self, patch):
         influence = {
             Belief.BELIEVE: 0,
             Belief.DISBELIEVE: 0,
-            Belief.UNDECIDED: 0,
         }
         total_friends = len(self.graph[patch])
+        if total_friends == 0:  # who can influence him?
+            return influence
         for friend in self.graph[patch]:
-            state = self.belief.get_belief(patch)
-            influence[state] += 1
+            state = self.belief.get_belief(friend)
+            if state in [Belief.BELIEVE, Belief.DISBELIEVE]:
+                influence[state] += 1
+        for state in [Belief.BELIEVE, Belief.DISBELIEVE]:
+            influence[state] = round(float(influence[state])/float(total_friends), 2)
         return influence

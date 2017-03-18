@@ -175,6 +175,11 @@ class Simulation(object):
                     self.experts.add(patch)
                     break
 
+    def set_expert(self, patch):
+        patch.set_expert()
+        self.belief.set_belief(patch, self.expert_belief)
+        self.experts.add(patch)
+
     def is_expert(self, patch):
         return patch in self.experts
 

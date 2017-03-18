@@ -208,11 +208,18 @@ class Simulation(object):
             self.save_history()
 
     def update_belief(self, patch):
+        belief_state = self.belief.get_belief(patch)
+
+        # if there is expert influence around, adopt the belief of the expert
+        expert_influence = self.get_expert_influence(patch)
+        if expert_influence:
+            self.belief.set_belief(patch, expert_influence)
+            return
+
         # if agent believes or disbelieves something, friends influence that is above the
         # BELIEF_UPDATE_THRESHOLD will make him become undecided
         # if he is undecided, friends influence above the BELIEF_UPDATE_THRESHOLD will make him
         # update his belief to either BELIEVE or DISBELIEVE
-        belief_state = self.belief.get_belief(patch)
         relevant_influence = self.get_influence_above_threshold(patch)
         if belief_state == Belief.UNDECIDED and relevant_influence:
             self.belief.set_belief(patch, relevant_influence)
@@ -220,9 +227,6 @@ class Simulation(object):
             self.belief.set_belief(patch, Belief.UNDECIDED)
 
     def get_influence_above_threshold(self, patch):
-        expert_influence = self.get_expert_influence(patch)
-        if expert_influence:
-            return expert_influence
         friends_influence = self.get_friends_influence(patch)
         for state in [Belief.BELIEVE, Belief.DISBELIEVE]:
             if friends_influence[state] >= self.belief_update_threshold:

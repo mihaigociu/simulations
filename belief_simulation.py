@@ -14,19 +14,29 @@ class Patch:
 
     NEUTRAL = 'w'
 
-    def __init__(self, label, status=None, pos=(0, 0)):
+    def __init__(self, id, status=None, pos=(0, 0)):
         if not status:
             self.status = Patch.NEUTRAL
         else:
             self.status = status
         self.pos = pos
-        self.label = label
+        self.label = 'N'
+        self.id = id
 
-    def set_status(self, status):
-        self.status = status
+    def set_belief(self, belief):
+        self.status = belief
+
+    def get_belief(self):
+        return self.status
 
     def set_neutral(self):
         self.status = Patch.NEUTRAL
+
+    def set_expert(self):
+        self.label = 'E'
+
+    def is_expert(self):
+        return self.label == 'E'
 
     def __str__(self):
         return(str(self.label))
@@ -35,12 +45,12 @@ class Patch:
         return(str(self.label))
 
     def __hash__(self):
-        return hash(self.label)
+        return hash(self.id)
 
     def __eq__(self, other):
         if not other:
             return False
-        return self.label == other.label
+        return self.id == other.id
 
 
 class Belief(object):
@@ -66,13 +76,18 @@ class Belief(object):
 
     def add_patch(self, patch, state):
         if self.check_state(state):
-            patch.set_status(state)
+            patch.set_belief(state)
             self.belief_states_patches[state].add(patch)
 
     def remove_patch(self, patch, state):
         if self.check_state(state):
             patch.set_neutral()
             self.belief_states_patches[state].remove(patch)
+
+    def get_belief(self, patch):
+        for state in self.belief_states:
+            if patch in self.belief_states_patches[state]:
+                return state
 
     def check_state(self, state):
         if state not in [Belief.BELIEVE, Belief.DISBELIEVE, Belief.UNDECIDED]:
@@ -92,6 +107,9 @@ class Belief(object):
 class Simulation(object):
     nr_patches = 100   # Number of patches
     c_distance = 15  # An arbitrary parameter to determine which patches are connected
+    NR_OF_EXPERTS = 1
+    EXPERT_BELIEF = Belief.BELIEVE
+    BELIEF_UPDATE_THRESHOLD = 0.5
 
     # TODO: implement algorithm for generating small-world networks
 
@@ -99,6 +117,7 @@ class Simulation(object):
         self.step = 0
         self.patches = []
         self.history = []
+        self.experts = []
         self.with_history = with_history
 
         self.graph = nx.Graph()
@@ -106,6 +125,7 @@ class Simulation(object):
 
         self.belief = Belief()
         self.set_initial_beliefs()
+        self.add_experts()
 
         # keep track of changes in history
         if self.with_history:
@@ -120,7 +140,7 @@ class Simulation(object):
         positions = np.random.uniform(high=100, size=(self.nr_patches, 2))
         # add patches to the graph
         for i in range(self.nr_patches):
-            patch = self.generate_patch(label=i, pos=positions[i])
+            patch = self.generate_patch(id=i, pos=positions[i])
             self.graph.add_node(patch)
             self.patches.append(patch)
         # add edges
@@ -134,8 +154,18 @@ class Simulation(object):
     def distance_2d(self, p1, p2):
         return np.sqrt((p1.pos[1]-p2.pos[1])**2+(p1.pos[0]-p2.pos[0])**2)
 
-    def generate_patch(self, label, pos):
-        return Patch(label=label, pos=pos)
+    def generate_patch(self, id, pos):
+        return Patch(id=id, pos=pos)
+
+    def add_experts(self):
+        for i in range(Simulation.NR_OF_EXPERTS):
+            while True:
+                patch = np.random.choice(self.patches)
+                if not patch.is_expert():
+                    patch.set_expert()
+                    self.belief.add_patch(patch, Simulation.EXPERT_BELIEF)
+                    self.experts.append(patch)
+                    break
 
     def save_history(self):
         self.history.append({
@@ -159,3 +189,28 @@ class Simulation(object):
             args.append(state)
         kwargs = {'figure': pylab.figure(2, (8, 8))}
         pylab.plot(*args, **kwargs)
+
+    def run_simulation(self, steps=1):
+        for step in range(steps):
+            for patch in self.patches:
+                self.update_belief(patch)
+
+    def update_belief(self, patch):
+        friends_influence = self.get_friends_influence(patch)
+        # if agent believes or disbelieves something, friends influence that is above the 
+        # BELIEF_UPDATE_THRESHOLD will make him become undecided
+        # if he is undecided, friends influence above the BELIEF_UPDATE_THRESHOLD will make him
+        # update his belief to either BELIEVE or DISBELIEVE
+        pass
+
+    def get_friends_influence(self, patch):
+        influence = {
+            Belief.BELIEVE: 0,
+            Belief.DISBELIEVE: 0,
+            Belief.UNDECIDED: 0,
+        }
+        total_friends = len(self.graph[patch])
+        for friend in self.graph[patch]:
+            state = self.belief.get_belief(patch)
+            influence[state] += 1
+        return influence

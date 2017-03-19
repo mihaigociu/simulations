@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pylab
+import math
+from networkx.generators.geometric import navigable_small_world_graph
 
 from orderedset import OrderedSet
 
@@ -109,6 +111,7 @@ class Simulation(object):
                  init_believe_threshold=INIT_BELIEVE_THRESHOLD,
                  init_disbelieve_threshold=INIT_DISBELIEVE_THRESHOLD,
                  experts_spreading=False,
+                 small_world_network=True,
                  c_distance=C_DISTANCE):
         self.nr_patches = nr_patches
         self.nr_of_experts = nr_of_experts
@@ -117,6 +120,7 @@ class Simulation(object):
         self.init_believe_threshold = init_believe_threshold
         self.init_disbelieve_threshold = init_disbelieve_threshold
         self.experts_spreading = experts_spreading
+        self.small_world_network = small_world_network
         self.c_distance = c_distance
         self.step = 0
         self.patches = []
@@ -124,7 +128,10 @@ class Simulation(object):
         self.experts = set()
 
         self.graph = nx.Graph()
-        self.generate_patches_2d()
+        if self.small_world_network:
+            self.generate_patches_2d_small_world()
+        else:
+            self.generate_patches_2d_random()
 
         self.belief = Belief()
         self.set_initial_beliefs()
@@ -145,7 +152,29 @@ class Simulation(object):
         else:
             self.belief.set_belief(patch, Belief.UNDECIDED)
 
-    def generate_patches_2d(self):
+    def generate_patches_2d_small_world(self):
+        # I will generate a small world network graph using this tool from networkx
+        # the problem is that I need a graph with Patch nodes while this gives me a graph
+        # with tuple nodes, so I need to make a conversion
+        sw_graph = navigable_small_world_graph(int(math.sqrt(self.nr_patches)))
+
+        # will use this dict to later build the edges in my new graph
+        sw_patches = {}
+        i = 0
+        for sw_node in sw_graph.nodes():
+            i += 1
+            patch = self.generate_patch(id=i, pos=sw_node)
+            sw_patches[sw_node] = patch
+            self.graph.add_node(patch)
+            self.patches.append(patch)
+
+        # now build the edges in our graph using the small world graph (sw_graph)
+        for sw_node, patch in sw_patches.items():
+            for sw_friend in sw_graph[sw_node]:
+                friend_patch = sw_patches[sw_friend]
+                self.graph.add_edge(patch, friend_patch)
+
+    def generate_patches_2d_random(self):
         # maybe use some Barabasi-Albert graph instead of random generation?
         positions = np.random.uniform(high=100, size=(self.nr_patches, 2))
         # add patches to the graph

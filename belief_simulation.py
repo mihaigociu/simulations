@@ -108,6 +108,7 @@ class Simulation(object):
                  belief_update_threshold=BELIEF_UPDATE_THRESHOLD,
                  init_believe_threshold=INIT_BELIEVE_THRESHOLD,
                  init_disbelieve_threshold=INIT_DISBELIEVE_THRESHOLD,
+                 experts_spreading=False,
                  c_distance=C_DISTANCE):
         self.nr_patches = nr_patches
         self.nr_of_experts = nr_of_experts
@@ -115,6 +116,7 @@ class Simulation(object):
         self.belief_update_threshold = belief_update_threshold
         self.init_believe_threshold = init_believe_threshold
         self.init_disbelieve_threshold = init_disbelieve_threshold
+        self.experts_spreading = experts_spreading
         self.c_distance = c_distance
         self.step = 0
         self.patches = []
@@ -218,7 +220,12 @@ class Simulation(object):
         # if there is expert influence around, adopt the belief of the expert
         expert_influence = self.get_expert_influence(patch)
         if expert_influence:
-            self.belief.set_belief(patch, expert_influence)
+            if self.experts_spreading:
+                # this flag means every agent that comes in contact with an expert will become
+                # expert themselves - that's how it is in the paper but to me it looks unrealistic
+                self.set_expert(patch)
+            else:
+                self.belief.set_belief(patch, expert_influence)
             return
 
         # if agent believes or disbelieves something, friends influence that is above the

@@ -38,10 +38,10 @@ class Patch:
         return self.label == 'E'
 
     def __str__(self):
-        return(str(self.id))
+        return(str(self.label))
 
     def __repr__(self):
-        return(str(self.id))
+        return(str(self.label))
 
     def __hash__(self):
         return hash(self.id)
@@ -126,6 +126,10 @@ class Simulation(object):
         self.patches = []
         self.history = []
         self.experts = set()
+        # this flag tells whether the draw_graph method should draw each node at node.pos
+        # or disregard node.pos and let networkx figure out a way of calculating positions and
+        # drawing the nodes
+        self.draw_nodes_by_pos = True
 
         self.graph = nx.Graph()
         if self.small_world_network:
@@ -153,10 +157,12 @@ class Simulation(object):
             self.belief.set_belief(patch, Belief.UNDECIDED)
 
     def generate_patches_2d_small_world(self):
+        self.draw_nodes_by_pos = False
+
         # I will generate a small world network graph using this tool from networkx
         # the problem is that I need a graph with Patch nodes while this gives me a graph
         # with tuple nodes, so I need to make a conversion
-        sw_graph = navigable_small_world_graph(int(math.sqrt(self.nr_patches)))
+        sw_graph = nx.connected_watts_strogatz_graph(self.nr_patches, int(math.sqrt(self.nr_patches)), .1)
 
         # will use this dict to later build the edges in my new graph
         sw_patches = {}
@@ -221,8 +227,12 @@ class Simulation(object):
             Belief.UNDECIDED: len(self.belief.undecided_patches)})
 
     def draw_graph(self):
-        pylab.figure(1, figsize=(8, 8))
-        nx.draw(self.graph, {patch: patch.pos for patch in self.graph.nodes()},
+        pylab.figure(1, figsize=(12, 12))
+        if self.draw_nodes_by_pos:
+            positions = {patch: patch.pos for patch in self.graph.nodes()}
+        else:
+            positions = None
+        nx.draw(self.graph, positions,
                 with_labels=True,
                 node_color=[patch.status for patch in self.graph.nodes()])
         pylab.show()

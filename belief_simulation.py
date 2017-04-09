@@ -141,6 +141,9 @@ class Simulation(object):
         self.set_initial_beliefs()
         self.add_experts()
 
+        # store a copy of the initial state of the graph
+        self.initial_graph = self.graph.copy()
+
         self.save_history()
 
     def set_initial_beliefs(self):
@@ -157,8 +160,6 @@ class Simulation(object):
             self.belief.set_belief(patch, Belief.UNDECIDED)
 
     def generate_patches_2d_small_world(self):
-        self.draw_nodes_by_pos = False
-
         # I will generate a small world network graph using this tool from networkx
         # the problem is that I need a graph with Patch nodes while this gives me a graph
         # with tuple nodes, so I need to make a conversion
@@ -179,6 +180,11 @@ class Simulation(object):
             for sw_friend in sw_graph[sw_node]:
                 friend_patch = sw_patches[sw_friend]
                 self.graph.add_edge(patch, friend_patch)
+
+        # now we need to generate the positions of the nodes on the image
+        positions = nx.spring_layout(self.graph, scale=100)
+        for node in self.graph:
+            node.pos = positions[node]
 
     def generate_patches_2d_random(self):
         # maybe use some Barabasi-Albert graph instead of random generation?
@@ -226,16 +232,21 @@ class Simulation(object):
             Belief.DISBELIEVE: len(self.belief.disbelieve_patches),
             Belief.UNDECIDED: len(self.belief.undecided_patches)})
 
-    def draw_graph(self):
+    def draw_graph(self, graph=None):
+        if graph is None:
+            graph = self.graph
         pylab.figure(1, figsize=(12, 12))
         if self.draw_nodes_by_pos:
-            positions = {patch: patch.pos for patch in self.graph.nodes()}
+            positions = {patch: patch.pos for patch in graph.nodes()}
         else:
             positions = None
-        nx.draw(self.graph, positions,
+        nx.draw(graph, positions,
                 with_labels=True,
-                node_color=[patch.status for patch in self.graph.nodes()])
+                node_color=[patch.status for patch in graph.nodes()])
         pylab.show()
+
+    def draw_initial_graph(self):
+        self.draw_graph(self.initial_graph)
 
     def draw_history(self):
         time = range(1, len(self.history)+1)
@@ -246,6 +257,7 @@ class Simulation(object):
             args.append(state)
         kwargs = {'figure': pylab.figure(2, (8, 8))}
         pylab.plot(*args, **kwargs)
+        pylab.show()
 
     def run_simulation(self, steps=1):
         for step in range(steps):

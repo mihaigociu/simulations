@@ -272,6 +272,9 @@ class Simulation(object):
             self.save_history()
 
     def update_belief(self, patch):
+        if self.is_expert(patch):  # the expert will not update its belief
+            return
+
         belief_state = self.belief.get_belief(patch)
 
         # if there is expert influence around, adopt the belief of the expert

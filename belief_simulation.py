@@ -104,7 +104,7 @@ class Simulation(object):
     BELIEF_UPDATE_THRESHOLD = 0.6
 
     # these are used for generating the initial states of the patches
-    INIT_BELIEVE_THRESHOLD = 0.6
+    INIT_BELIEVE_THRESHOLD = 0.8
     INIT_DISBELIEVE_THRESHOLD = 0.3
 
     # TODO: implement algorithm for generating small-world networks
@@ -322,7 +322,7 @@ class Simulation(object):
             for friend in self.graph[patch]:
                 if self.is_expert(friend) or self.belief.get_belief(friend) != friends_influence:
                     continue
-                friends_potential_influence = self.get_potential_influence(self, [patch, friend])
+                friends_potential_influence = self.get_potential_influence([patch, friend])
                 if friends_potential_influence > expert_potential_influence:
                     self.belief.set_belief(patch, friends_influence)
         elif friends_influence and not expert_influence:

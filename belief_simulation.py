@@ -37,11 +37,16 @@ class Patch:
     def is_expert(self):
         return self.label == 'E'
 
+    def get_size(self):
+        if self.is_expert():
+            return 1200
+        return 600
+
     def __str__(self):
-        return(str(self.label))
+        return '%s%s' % (self.label, self.id)
 
     def __repr__(self):
-        return(str(self.label))
+        return '%s%s' % (self.label, self.id)
 
     def __hash__(self):
         return hash(self.id)
@@ -235,14 +240,15 @@ class Simulation(object):
     def draw_graph(self, graph=None):
         if graph is None:
             graph = self.graph
-        pylab.figure(1, figsize=(12, 12))
+        pylab.figure(1, figsize=(14, 14))
         if self.draw_nodes_by_pos:
             positions = {patch: patch.pos for patch in graph.nodes()}
         else:
             positions = None
         nx.draw(graph, positions,
                 with_labels=True,
-                node_color=[patch.status for patch in graph.nodes()])
+                node_color=[patch.status for patch in graph.nodes()],
+                node_size=[patch.get_size() for patch in graph.nodes()])
         pylab.show()
 
     def draw_initial_graph(self):

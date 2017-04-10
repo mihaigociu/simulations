@@ -117,6 +117,7 @@ class Simulation(object):
                  init_disbelieve_threshold=INIT_DISBELIEVE_THRESHOLD,
                  experts_spreading=False,
                  small_world_network=True,
+                 conflict_and_coordination=True,
                  c_distance=C_DISTANCE):
         self.nr_patches = nr_patches
         self.nr_of_experts = nr_of_experts
@@ -126,6 +127,7 @@ class Simulation(object):
         self.init_disbelieve_threshold = init_disbelieve_threshold
         self.experts_spreading = experts_spreading
         self.small_world_network = small_world_network
+        self.conflict_and_coordination = conflict_and_coordination
         self.c_distance = c_distance
         self.step = 0
         self.patches = []
@@ -214,6 +216,29 @@ class Simulation(object):
         return Patch(id=id, pos=pos)
 
     def add_experts(self):
+        if self.conflict_and_coordination:
+            self.add_experts_most_connected()
+        else:
+            self.add_experts_random()
+
+    def add_experts_most_connected(self):
+        most_connected = [(patch, self.get_degree(patch)) for patch in self.patches]
+        most_connected.sort(key=lambda x: x[1], reverse=True)
+        counter = 0
+        for counter in range(self.nr_of_experts):
+            patch, degree = most_connected[counter]
+            self.add_expert(patch)
+
+    def add_expert(self, patch):
+        if not self.is_expert(patch):
+            patch.set_expert()
+            self.belief.set_belief(patch, self.expert_belief)
+            self.experts.add(patch)
+
+    def get_degree(self, patch):
+        return len(self.graph[patch])
+
+    def add_experts_random(self):
         for i in range(self.nr_of_experts):
             while True:
                 patch = np.random.choice(self.patches)
@@ -268,8 +293,49 @@ class Simulation(object):
     def run_simulation(self, steps=1):
         for step in range(steps):
             for patch in self.patches:
-                self.update_belief(patch)
+                if self.conflict_and_coordination:
+                    self.update_belief_coordination(patch)
+                else:
+                    self.update_belief(patch)
             self.save_history()
+
+    def update_belief_coordination(self, patch):
+        if self.is_expert(patch):  # the expert will not update its belief
+            return
+
+        # as suggested in the paper, if we have expert influence in conflicting with
+        # friends influence, we'll go through a coordination process
+
+        # in the first phase, the agent is influenced by the expert, if any around
+        expert_influence, expert = self.get_expert_influence(patch)
+        if expert_influence:
+            self.belief.set_belief(patch, expert_influence)
+
+        # but then if there is a conflict with the friends influence
+        friends_influence = self.get_influence_above_threshold(patch)
+        if expert_influence and friends_influence and expert_influence != friends_influence:
+            # there will be a process of pair-wise coordination, as I understand from reading
+            # the paper; this means we'll get the potential influence for each of the pair-groups
+            # and compare it to the potential influence of the pair-group formed by the patch
+            # and its expert neighbor
+            expert_potential_influence = self.get_potential_influence([patch, expert])
+            for friend in self.graph[patch]:
+                if self.is_expert(friend) or self.belief.get_belief(friend) != friends_influence:
+                    continue
+                friends_potential_influence = self.get_potential_influence(self, [patch, friend])
+                if friends_potential_influence > expert_potential_influence:
+                    self.belief.set_belief(patch, friends_influence)
+        elif friends_influence and not expert_influence:
+            self.belief.set_belief(patch, friends_influence)
+
+    def get_potential_influence(self, group):
+        # first add the nodes in the group to the potential
+        potential = set(patch for patch in group)
+        # then add the first degree neighbors
+        for patch in group:
+            for friend in self.graph[patch]:
+                potential.add(friend)
+        return len(potential)
 
     def update_belief(self, patch):
         if self.is_expert(patch):  # the expert will not update its belief
@@ -278,7 +344,7 @@ class Simulation(object):
         belief_state = self.belief.get_belief(patch)
 
         # if there is expert influence around, adopt the belief of the expert
-        expert_influence = self.get_expert_influence(patch)
+        expert_influence, expert = self.get_expert_influence(patch)
         if expert_influence:
             if self.experts_spreading:
                 # this flag means every agent that comes in contact with an expert will become
@@ -310,7 +376,8 @@ class Simulation(object):
         # so that experts do not all have the same belief state
         for friend in self.graph[patch]:
             if self.is_expert(friend):
-                return self.belief.get_belief(friend)
+                return (self.belief.get_belief(friend), friend)
+        return (None, None)
 
     def get_friends_influence(self, patch):
         influence = {

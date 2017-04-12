@@ -24,6 +24,7 @@ class Patch:
         self.pos = pos
         self.label = 'N'
         self.id = id
+        self.degree = 0
 
     def set_belief(self, belief):
         self.status = belief
@@ -43,9 +44,13 @@ class Patch:
         return 600
 
     def __str__(self):
+        if self.is_expert():
+            return '%s%s(%s)' % (self.label, self.id, self.degree)
         return '%s%s' % (self.label, self.id)
 
     def __repr__(self):
+        if self.is_expert():
+            return '%s%s(%s)' % (self.label, self.id, self.degree)
         return '%s%s' % (self.label, self.id)
 
     def __hash__(self):
@@ -193,6 +198,8 @@ class Simulation(object):
         for node in self.graph:
             node.pos = positions[node]
 
+        self.set_node_degrees()
+
     def generate_patches_2d_random(self):
         # maybe use some Barabasi-Albert graph instead of random generation?
         positions = np.random.uniform(high=100, size=(self.nr_patches, 2))
@@ -208,6 +215,12 @@ class Simulation(object):
                     continue
                 if self.distance_2d(p1, p2) <= self.c_distance:
                     self.graph.add_edge(p1, p2)
+
+        self.set_node_degrees()
+
+    def set_node_degrees(self):
+        for patch in self.patches:
+            patch.degree = len(self.graph[patch])
 
     def distance_2d(self, p1, p2):
         return np.sqrt((p1.pos[1]-p2.pos[1])**2+(p1.pos[0]-p2.pos[0])**2)
